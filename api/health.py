@@ -8,8 +8,7 @@ def handler(request):
     """Vercel serverless function entry point for health check"""
     return jsonify({
         "status": "healthy",
-        "message": "Flask app is running",
+        "message": "Flask app is running.",
         "gemini_configured": bool(GEMINI_API_KEY),
         "gcp_configured": bool(GCP_CREDENTIALS_JSON)
     })
-    
