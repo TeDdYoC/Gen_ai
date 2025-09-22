@@ -9,6 +9,7 @@ import PyPDF2
 import docx
 import datetime
 import uuid
+import traceback
 
 # --- Environment Variables (Set these in Vercel Dashboard) ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -17,17 +18,21 @@ GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME")
 BIGQUERY_DATASET = os.environ.get("BIGQUERY_DATASET")
 GCP_CREDENTIALS_JSON = os.environ.get("GCP_CREDENTIALS_JSON")
 
-# Initialize GCP credentials from environment
+# --- Initialize GCP credentials from environment ---
 credentials = None
 if GCP_CREDENTIALS_JSON:
     try:
         credentials_info = json.loads(GCP_CREDENTIALS_JSON)
         credentials = service_account.Credentials.from_service_account_info(credentials_info)
-        print("✅ GCP Credentials loaded successfully")
+        print("✅ GCP Credentials loaded successfully.")
+    except json.JSONDecodeError as e:
+        print(f"❌ ERROR: Failed to parse GCP_CREDENTIALS_JSON. Check for formatting errors (e.g., newlines, extra spaces). Details: {e}")
     except Exception as e:
-        print(f"⚠️ GCP Credentials error: {e}")
+        print(f"❌ ERROR: GCP Credentials loading failed. Details: {e}")
+else:
+    print("⚠️ WARNING: GCP_CREDENTIALS_JSON environment variable is not set.")
 
-# --- Embedded Knowledge Base (instead of file reading) ---
+# --- Embedded Knowledge Base ---
 LEGAL_KNOWLEDGE_BASE = """
 --- BHARATIYA NYAYA SANHITA (BNS) SUMMARY ---
 Key sections include:
@@ -45,22 +50,6 @@ Key articles include:
 
 Note: This is a simplified knowledge base. In production, you would embed the full legal texts.
 """
-
-def initialize_clients():
-    """Initialize Google Cloud clients"""
-    if not credentials:
-        return None
-    
-    try:
-        clients = {
-            "vision": vision.ImageAnnotatorClient(credentials=credentials),
-            "storage": storage.Client(project=GCP_PROJECT_ID, credentials=credentials),
-            "bigquery": bigquery.Client(project=GCP_PROJECT_ID, credentials=credentials)
-        }
-        return clients
-    except Exception as e:
-        print(f"⚠️ Could not initialize all Google Cloud clients: {e}")
-        return None
 
 def extract_text_from_file_in_memory(file_storage, filename):
     """Extract text from uploaded file"""
@@ -83,7 +72,6 @@ def extract_text_from_file_in_memory(file_storage, filename):
             for para in doc.paragraphs:
                 text += para.text + "\n"
         elif ext in [".png", ".jpg", ".jpeg"]:
-            # For images, use Vision API if available
             if credentials:
                 try:
                     vision_client = vision.ImageAnnotatorClient(credentials=credentials)
@@ -96,9 +84,10 @@ def extract_text_from_file_in_memory(file_storage, filename):
                     else:
                         text = "No text found in image"
                 except Exception as e:
+                    print(f"❌ ERROR: Vision API call failed. Check service account permissions. Details: {e}")
                     text = f"Image processing failed: {e}"
             else:
-                text = "Image processing requires GCP credentials"
+                text = "Image processing requires GCP credentials."
         else:
             raise ValueError(f"Unsupported file type: {ext}")
             
@@ -108,7 +97,8 @@ def extract_text_from_file_in_memory(file_storage, filename):
 
 def upload_to_gcs_from_memory(file_bytes, filename, document_id):
     """Upload file to Google Cloud Storage"""
-    if not credentials or not GCP_PROJECT_ID or not GCS_BUCKET_NAME:
+    if not credentials or not GCS_BUCKET_NAME:
+        print("⚠️ WARNING: GCS credentials or bucket name not configured. Skipping upload.")
         return None
         
     try:
@@ -117,64 +107,71 @@ def upload_to_gcs_from_memory(file_bytes, filename, document_id):
         blob_name = f"uploads/{document_id}/{filename}"
         blob = bucket.blob(blob_name)
         blob.upload_from_string(file_bytes)
+        print(f"✅ File uploaded to GCS: {blob_name}")
         return f"gs://{GCS_BUCKET_NAME}/{blob_name}"
     except Exception as e:
-        print(f"⚠️ GCS upload failed: {e}")
+        print(f"❌ ERROR: GCS upload failed. Check bucket name and permissions. Details: {e}")
         return None
 
 def log_to_bigquery(metadata):
     """Log metadata to BigQuery"""
-    if not credentials or not GCP_PROJECT_ID or not BIGQUERY_DATASET:
+    if not credentials or not BIGQUERY_DATASET:
+        print("⚠️ WARNING: BigQuery credentials or dataset not configured. Skipping logging.")
         return False
         
     try:
         bq_client = bigquery.Client(project=GCP_PROJECT_ID, credentials=credentials)
         table_id = f"{GCP_PROJECT_ID}.{BIGQUERY_DATASET}.document_metadata"
         errors = bq_client.insert_rows_json(table_id, [metadata])
-        return len(errors) == 0
+        if errors:
+            print(f"❌ ERROR: BigQuery logging failed. Details: {errors}")
+            return False
+        else:
+            print("✅ Metadata logged to BigQuery.")
+            return True
     except Exception as e:
-        print(f"⚠️ BigQuery logging failed: {e}")
+        print(f"❌ ERROR: BigQuery logging failed. Check table and permissions. Details: {e}")
         return False
 
 # This is the main handler function that Vercel will call
 def handler(request):
     """Vercel serverless function entry point for analysis"""
-    print("🚀 /api/analyze endpoint called")
+    print("🚀 /api/analyze endpoint called.")
     
     if request.method == 'GET':
-        return jsonify({"message": "Analyze endpoint is working. Send POST request with file."})
+        return jsonify({"message": "Analyze endpoint is working. Send a POST request with a file."})
     
     if not GEMINI_API_KEY:
-        return jsonify({"error": "GEMINI_API_KEY not configured"}), 500
+        print("❌ ERROR: GEMINI_API_KEY environment variable is not set.")
+        return jsonify({"error": "GEMINI_API_KEY not configured."}), 500
 
     if 'file' not in request.files:
-        return jsonify({"error": "No file part in request"}), 400
+        print("❌ ERROR: No file part in the request.")
+        return jsonify({"error": "No file part in request."}), 400
         
     file = request.files['file']
     if file.filename == '':
-        return jsonify({"error": "No file selected"}), 400
+        print("❌ ERROR: No file selected for upload.")
+        return jsonify({"error": "No file selected."}), 400
 
     try:
         language = request.form.get('language', 'English')
         print(f"📄 Processing: {file.filename}, Language: {language}")
         
-        # Read file into memory
         file_bytes = file.read()
         file.seek(0)
         
-        # Extract text from file
         document_text = extract_text_from_file_in_memory(file, file.filename)
         
         if not document_text.strip():
-            return jsonify({"error": "No text could be extracted from the file"}), 400
+            print("❌ ERROR: No text could be extracted from the file.")
+            return jsonify({"error": "No text could be extracted from the file."}), 400
         
-        print(f"✅ Text extraction successful: {len(document_text)} characters")
+        print(f"✅ Text extraction successful: {len(document_text)} characters.")
         
-        # Configure Gemini
         genai.configure(api_key=GEMINI_API_KEY)
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        # Generate AI analysis
         initial_prompt = f"""You are an expert Indian legal assistant. Analyze the user's document based on the provided legal knowledge base. Provide a structured breakdown in {language}. The output must strictly follow this format: ### Summary, ### Risk Analysis, ### Key Clauses & Legal Connections, ### Potential Mistakes & Ambiguities.
 
 When generating the '### Key Clauses & Legal Connections' section, you MUST refer to the following legal texts to identify relevant clauses and articles. Cite the specific section or article number (e.g., BNS Section 101, Article 14 of the Indian Constitution).
@@ -187,16 +184,14 @@ When generating the '### Key Clauses & Legal Connections' section, you MUST refe
 {document_text[:15000]}
 --- END DOCUMENT ---"""
         
+        print("Waiting for Gemini API response...")
         response = gemini_model.generate_content(initial_prompt)
-        print("✅ AI analysis generated successfully")
+        print("✅ AI analysis generated successfully.")
         
-        # Optional: Cloud storage and logging
         document_id = str(uuid.uuid4())
         
-        # Try to upload to GCS
         gcs_path = upload_to_gcs_from_memory(file_bytes, file.filename, document_id)
         
-        # Try to log metadata
         if gcs_path:
             metadata = {
                 "document_id": document_id,
@@ -217,5 +212,7 @@ When generating the '### Key Clauses & Legal Connections' section, you MUST refe
         })
         
     except Exception as e:
-        print(f"❌ Error in /api/analyze: {str(e)}")
-        return jsonify({"error": str(e)}), 500
+        error_traceback = traceback.format_exc()
+        print(f"❌ FATAL ERROR in /api/analyze: {str(e)}")
+        print(error_traceback)
+        return jsonify({"error": str(e), "traceback": error_traceback}), 500
