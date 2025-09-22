@@ -8,5 +8,14 @@
       "source": "/(.*)",
       "destination": "/public/index.html"
     }
+  ],
+  "builds": [
+    {
+      "src": "api/*.py",
+      "use": "@vercel/python",
+      "config": {
+        "runtime": "python3.9"
+      }
+    }
   ]
 }
