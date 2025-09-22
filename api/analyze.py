@@ -10,7 +10,7 @@ import docx
 import datetime
 import uuid
 import traceback
-
+#idk
 # --- Environment Variables (Set these in Vercel Dashboard) ---
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GCP_PROJECT_ID = os.environ.get("GCP_PROJECT_ID")
