@@ -4,8 +4,7 @@ import google.generativeai as genai
 from flask import request, jsonify
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
-# Handler for Vercel
+ 
 def handler(request):
     """Vercel serverless function entry point for chat"""
     print("💬 /api/chat endpoint called")
