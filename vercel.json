@@ -1,27 +1,21 @@
 {
-  "functions": {
-    "api/api.py": {
-      "runtime": "python3.9"
-    }
-  },
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/api.py"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/index.html"
-    }
-  ],
   "builds": [
     {
       "src": "api.py",
       "use": "@vercel/python",
       "config": {
-        "maxLambdaSize": "15mb"
+        "runtime": "python3.9"
       }
     }
   ],
-  "installCommand": "pip install -r requirements.txt"
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/index.html"
+    }
+  ]
 }
