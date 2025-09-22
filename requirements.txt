@@ -1,9 +1,18 @@
-Flask==2.3.3
+Flask==3.0.0
+# The Flask framework
 flask-cors==4.0.0
-google-generativeai==0.3.1
-google-cloud-vision==3.4.4
-google-cloud-storage==2.10.0
-google-cloud-bigquery==3.11.4
-google-auth==2.23.3
+# For cross-origin requests, already a good version
+google-generativeai==0.7.0
+# Updated version for better API stability
+google-cloud-vision==3.5.5
+# Updated version for Google Vision
+google-cloud-storage==2.16.0
+# Updated version for Google Cloud Storage
+google-cloud-bigquery==3.24.0
+# Updated version for BigQuery
+google-auth==2.31.0
+# Updated version for authentication
 PyPDF2==3.0.1
+# This is a good, stable version
 python-docx==0.8.11
+# This is a good, stable version
