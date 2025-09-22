@@ -11,7 +11,6 @@ from flask import Flask, request, jsonify
 from google.cloud import vision, storage, bigquery
 from google.oauth2 import service_account
 
-#what??
 
 app = Flask(__name__)
 
