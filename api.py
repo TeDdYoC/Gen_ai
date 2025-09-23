@@ -1,6 +1,20 @@
-import os
+
 import io
+
+import os
 import json
+
+gcp_creds_json = os.environ.get("GCP_CREDENTIALS_JSON")
+print(f"DEBUG: GCP_CREDENTIALS_JSON is set: {bool(gcp_creds_json)}")
+if gcp_creds_json:
+    try:
+        parsed_json = json.loads(gcp_creds_json)
+        print(f"DEBUG: JSON parsed successfully. Keys: {parsed_json.keys()}")
+    except json.JSONDecodeError as e:
+        print(f"DEBUG: JSON parsing failed: {e}")
+        print(f"DEBUG: Raw JSON (first 50 chars): {gcp_creds_json[:50]}")
+        
+
 import google.generativeai as genai
 import PyPDF2
 import docx
